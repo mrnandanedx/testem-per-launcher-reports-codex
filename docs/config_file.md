@@ -144,6 +144,17 @@ report for each launcher. `<launcher>` expands to the configured launcher name,
 reporter is created. Missing parent directories are created automatically.
 Paths without `<launcher>` continue to collect all results in one file.
 
+Launcher names replace each of `/`, `\`, `:`, `*`, `?`, `"`, `<`, `>`, `|`, `(`,
+and `)` with an underscore. Runs of whitespace become a single underscore; a
+missing name becomes `unknown`. For example, `IE 11` becomes `IE_11`.
+
+The programmatic config helpers `hasLauncherTemplate()`, `hasDateTemplate()`,
+`hasTimestampTemplate()`, and `hasAnyReportTemplate()` inspect `report_file`.
+`validateReportFile()` returns `{ isValid, errors, warnings }`: unknown
+placeholders are errors, and a launcher template without a file extension is a
+warning. An unset report file is valid. `getExpandedReportFile(launcher)` expands
+the configured path and returns `null` when no report file is configured.
+
 ### Returning a Promise from `testem.js`
 
 If you need to resolve some async values in your configuration you can return a promise from `testem.js`. The resolved value of

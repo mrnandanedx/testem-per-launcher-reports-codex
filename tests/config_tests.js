@@ -31,6 +31,73 @@ describe('Config', function() {
     expect(config.progOptions).to.equal(progOptions);
   });
 
+  describe('report file templates', function() {
+    it('detects each supported template independently', function() {
+      ['Launcher', 'Date', 'Timestamp'].forEach(template => {
+        progOptions.report_file = 'reports/<' + template.toLowerCase() + '>.xml';
+        ['Launcher', 'Date', 'Timestamp'].forEach(candidate => {
+          expect(config['has' + candidate + 'Template']()).to.equal(candidate === template);
+        });
+        expect(config.hasAnyReportTemplate()).to.be.true();
+      });
+    });
+
+    it('handles absent and ordinary paths without detecting templates', function() {
+      [undefined, null, '', 'reports/results.xml', '<unknown>'].forEach(value => {
+        progOptions.report_file = value;
+        expect(config.hasAnyReportTemplate()).to.be.false();
+      });
+    });
+
+    it('considers an absent report file valid', function() {
+      [undefined, null, ''].forEach(value => {
+        progOptions.report_file = value;
+        expect(config.validateReportFile()).to.deep.equal({ isValid: true, errors: [], warnings: [] });
+        expect(config.getExpandedReportFile()).to.equal(null);
+      });
+    });
+
+    it('accepts ordinary paths and all supported placeholders', function() {
+      ['results.xml', 'reports/<launcher>-<date>-<timestamp>.xml'].forEach(value => {
+        progOptions.report_file = value;
+        expect(config.validateReportFile()).to.deep.equal({ isValid: true, errors: [], warnings: [] });
+      });
+    });
+
+    it('reports unknown placeholders as errors', function() {
+      progOptions.report_file = 'reports/<launcher>-<unknown>-<other>.xml';
+      const validation = config.validateReportFile();
+      expect(validation.isValid).to.be.false();
+      expect(validation.errors).to.have.lengthOf(2);
+      expect(validation.errors[0]).to.match(/unknown/i).and.contain('<unknown>');
+      expect(validation.errors[1]).to.contain('<other>');
+      expect(validation.warnings).to.deep.equal([]);
+    });
+
+    it('warns about a launcher template without an extension but keeps it valid', function() {
+      progOptions.report_file = 'reports.xml/<launcher>';
+      const validation = config.validateReportFile();
+      expect(validation.isValid).to.be.true();
+      expect(validation.errors).to.deep.equal([]);
+      expect(validation.warnings).to.have.lengthOf(1);
+      expect(validation.warnings[0]).to.contain('extension');
+      progOptions.report_file = 'reports/results';
+      expect(config.validateReportFile().warnings).to.deep.equal([]);
+    });
+
+    it('rejects a non-string report file', function() {
+      progOptions.report_file = 42;
+      expect(config.validateReportFile().isValid).to.be.false();
+    });
+
+    it('expands the configured path with an optional sanitized launcher', function() {
+      sandbox.useFakeTimers(new Date(2026, 0, 2, 3, 4, 5).getTime());
+      progOptions.report_file = 'reports/<date>/<launcher>-<timestamp>.xml';
+      expect(config.getExpandedReportFile('IE 11')).to.equal('reports/2026-01-02/IE_11-2026-01-02_03-04-05.xml');
+      expect(config.getExpandedReportFile()).to.equal('reports/2026-01-02/unknown-2026-01-02_03-04-05.xml');
+    });
+  });
+
   it('gives progOptions properties when got', function() {
     expect(config.get('file')).to.equal(progOptions.file);
   });

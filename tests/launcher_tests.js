@@ -11,6 +11,34 @@ const os = require('os');
 const isWin = require('../lib/utils/is-win')();
 
 describe('Launcher', function() {
+  describe('sanitized names', function() {
+    it('replaces each forbidden character with one underscore', function() {
+      const characters = ['/','\\', ':', '*', '?', '"', '<', '>', '|', '(', ')'];
+      characters.forEach(character => {
+        expect(Launcher.sanitizeLauncherName('a' + character + 'b')).to.equal('a_b');
+      });
+      expect(Launcher.sanitizeLauncherName(characters.join(''))).to.equal('___________');
+    });
+
+    it('collapses whitespace and preserves hyphens and underscores', function() {
+      expect(Launcher.sanitizeLauncherName('IE 11')).to.equal('IE_11');
+      expect(Launcher.sanitizeLauncherName('Fire-fox  (Nightly)')).to.equal('Fire-fox__Nightly_');
+      expect(Launcher.sanitizeLauncherName('a\t \nb')).to.equal('a_b');
+    });
+
+    it('uses unknown for a missing name', function() {
+      [null, undefined, ''].forEach(name => {
+        expect(Launcher.sanitizeLauncherName(name)).to.equal('unknown');
+      });
+    });
+
+    it('exposes the sanitized name on an instance', function() {
+      const launcher = new Launcher('IE 11', {}, new Config('ci'));
+      expect(launcher.getSanitizedName()).to.equal('IE_11');
+      expect(launcher.name).to.equal('IE 11');
+    });
+  });
+
   describe('via command', function() {
     let settings, config, launcher, sandbox;
 

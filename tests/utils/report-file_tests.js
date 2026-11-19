@@ -20,7 +20,14 @@ describe('ReportFile', function() {
     it('expands all occurrences of launcher, date and timestamp', function() {
       expect(ReportFile.expandPath('<date>/<launcher>/<timestamp>-<launcher>.xml', {
         launcher: 'Headless Chrome', date: date
-      })).to.equal('2026-01-02/Headless Chrome/2026-01-02_03-04-05-Headless Chrome.xml');
+      })).to.equal('2026-01-02/Headless_Chrome/2026-01-02_03-04-05-Headless_Chrome.xml');
+    });
+
+    it('sanitizes launcher names consistently for paths and the static helper', function() {
+      const name = 'Fire-fox (Nightly)/test';
+      expect(ReportFile.sanitizeLauncherName(name)).to.equal('Fire-fox__Nightly__test');
+      expect(ReportFile.expandPath('<launcher>.xml', { launcher: name })).to.equal('Fire-fox__Nightly__test.xml');
+      expect(ReportFile.expandPath('<launcher>.xml')).to.equal('unknown.xml');
     });
 
     it('uses the current local date when no date is supplied', function() {

@@ -33,7 +33,7 @@
     "fireworm": "^0.7.2",
     "glob": "^7.0.4",
     "http-proxy": "^1.13.1",
-    "js-yaml": "^3.2.5",
+    "js-yaml": "^5.5.0",
     "lodash": "^4.17.21",
     "mkdirp": "^3.0.1",
     "mustache": "^4.2.0",

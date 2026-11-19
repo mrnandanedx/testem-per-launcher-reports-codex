@@ -97,7 +97,7 @@ Chrome, Chrome Canary, Chromium, Firefox, IE, Opera, PhantomJS, Safari, Safari T
     phantomjs_launch_script:     [String]  path of custom phantomjs launch script
     proxies                      [Object]  path to options including `onlyContentTypes` and https://github.com/nodejitsu/node-http-proxy#options
     reporter:                    [String]  name of the reporter to be used in ci mode ("tap" (default), "xunit", "dot", "teamcity") or an object implementing https://github.com/testem/testem/blob/master/docs/custom_reporter.md
-    report_file:                 [String]  file to write test results to (stdout)
+    report_file:                 [String]  file to write test results to (stdout); supports <launcher>, <date> and <timestamp> placeholders
     route or routes:             [Object]  overrides for assets paths
     socket_heartbeat_timeout     [Number]  heartbeat timeout on browser socket in seconds (defaults to `browser_disconnect_timeout` if `browser_disconnect_timeout` is provided. Else, 5s)
     src_files:                   [Array]   string or array list of files or file patterns to use
@@ -134,6 +134,15 @@ Hooks can be defined as a string in which case they run as a shell command or as
     before_tests:         Runs before every run of tests
     after_tests:          Runs after every run of tests
     on_exit:              Runs before suite exits
+
+### Report file templates
+
+Use `report_file: 'reports/<date>/<launcher>-<timestamp>.xml'` to write a separate
+report for each launcher. `<launcher>` expands to the configured launcher name,
+`<date>` to the local date in `YYYY-MM-DD` format, and `<timestamp>` to
+`YYYY-MM-DD_HH-mm-ss` using local time. The date and time are captured when the
+reporter is created. Missing parent directories are created automatically.
+Paths without `<launcher>` continue to collect all results in one file.
 
 ### Returning a Promise from `testem.js`
 

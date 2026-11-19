@@ -6,6 +6,8 @@ const sinon = require('sinon');
 const tmp = require('tmp');
 const fs = require('fs');
 const PassThrough = require('stream').PassThrough;
+const path = require('path');
+const rimraf = require('rimraf');
 
 const tmpNameAsync = Bluebird.promisify(tmp.tmpName);
 
@@ -120,6 +122,60 @@ describe('Reporter', function() {
         expect(report).to.have.been.calledWith(null, {
           error: { message: 'Tests failed.' }, name: 'Error', passed: false
         });
+      });
+    });
+  });
+
+  describe('per-launcher files', function() {
+    let directory;
+
+    beforeEach(function() {
+      directory = tmp.dirSync().name;
+    });
+
+    afterEach(function() {
+      rimraf.sync(directory);
+    });
+
+    ['tap', 'xunit'].forEach(format => {
+      it('keeps interleaved launcher results in separate ' + format + ' files', function() {
+        const app = mockApp(format);
+        app.runners = [
+          { launcherId: 1, launcher: { name: 'Chrome' } },
+          { launcherId: 2, launcher: { name: 'Firefox' } }
+        ];
+        const reporter = new Reporter(app, stream, path.join(directory, '<launcher>', 'results.txt'));
+        reporter.onStart('Chrome 100', { launcherId: 1 });
+        reporter.testStarted('Chrome', { launcherId: 1 });
+        reporter.report('Chrome 100', { launcherId: 1, name: 'chrome-first', passed: true });
+        reporter.report('Firefox 100', { launcherId: 2, name: 'firefox-only', passed: false });
+        reporter.report('Chrome 100', { launcherId: 1, name: 'chrome-second', passed: true });
+        reporter.onEnd('Chrome 100', { launcherId: 1 });
+
+        return reporter.close().then(() => {
+          const chrome = fs.readFileSync(path.join(directory, 'Chrome', 'results.txt'), 'utf8');
+          const firefox = fs.readFileSync(path.join(directory, 'Firefox', 'results.txt'), 'utf8');
+          expect(chrome).to.contain('chrome-first').and.contain('chrome-second');
+          expect(chrome).not.to.contain('firefox-only');
+          expect(firefox).to.contain('firefox-only');
+          expect(firefox).not.to.contain('chrome-first');
+          expect(reporter.total).to.equal(3);
+          expect(reporter.hasPassed()).to.be.false();
+          const output = stream.read().toString();
+          expect(output).to.contain('chrome-first').and.contain('firefox-only');
+        });
+      });
+    });
+
+    it('preserves xunit intermediate TAP output with launcher templates', function() {
+      const app = mockApp('xunit');
+      const get = app.config.get;
+      app.config.get = key => key === 'xunit_intermediate_output' ? true : get(key);
+      const reporter = new Reporter(app, stream, path.join(directory, '<launcher>.xml'));
+      reporter.report('Firefox', { name: 'example', passed: true });
+      return reporter.close().then(() => {
+        expect(stream.read().toString()).to.contain('# tests 1');
+        expect(fs.readFileSync(path.join(directory, 'Firefox.xml'), 'utf8')).to.contain('<testsuite');
       });
     });
   });

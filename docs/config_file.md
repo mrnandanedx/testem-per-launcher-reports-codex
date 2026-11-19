@@ -143,6 +143,11 @@ report for each launcher. `<launcher>` expands to the configured launcher name,
 `YYYY-MM-DD_HH-mm-ss` using local time. The date and time are captured when the
 reporter is created. Missing parent directories are created automatically.
 Paths without `<launcher>` continue to collect all results in one file.
+Each launcher file contains a complete report with its own counts for xUnit,
+TAP, dot, or TeamCity. Launcher instances with the same name share one file.
+The internal `testem` launcher creates no separate file; stdout continues to
+include all results. `finish()` can be called repeatedly, and `close()` waits
+until every report file has finished writing.
 
 Launcher names replace each of `/`, `\`, `:`, `*`, `?`, `"`, `<`, `>`, `|`, `(`,
 and `)` with an underscore. Runs of whitespace become a single underscore; a

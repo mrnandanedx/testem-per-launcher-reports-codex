@@ -167,6 +167,118 @@ describe('Reporter', function() {
       });
     });
 
+    ['tap', 'xunit', 'dot', 'teamcity'].forEach(format => {
+      it('writes complete independent ' + format + ' reports and merges matching launcher names', function() {
+        const app = mockApp(format);
+        app.runners = [
+          { launcherId: 1, launcher: { name: 'Chrome' } },
+          { launcherId: 2, launcher: { name: 'Firefox' } },
+          { launcherId: 3, launcher: { name: 'Chrome' } }
+        ];
+        const reporter = new Reporter(app, stream, path.join(directory, '<launcher>.txt'));
+        reporter.onStart('testem', { launcherId: 0 });
+        reporter.report('Chrome 100', { launcherId: 1, name: 'first', passed: true });
+        reporter.report('Firefox 100', { launcherId: 2, name: 'broken', passed: false, error: { message: 'browser failed' } });
+        reporter.report('Chrome 101', { launcherId: 3, name: 'second', skipped: true });
+        reporter.report('testem', { launcherId: 0, name: 'hook', passed: true });
+        reporter.onEnd('testem', { launcherId: 0 });
+        const chromeReporter = reporter.launcherReports.get('Chrome').reporter;
+        const firefoxReporter = reporter.launcherReports.get('Firefox').reporter;
+        expect(chromeReporter.total).to.equal(2);
+        expect(chromeReporter.pass).to.equal(1);
+        expect(chromeReporter.skipped).to.equal(1);
+        expect(firefoxReporter.total).to.equal(1);
+        expect(firefoxReporter.pass).to.equal(0);
+        expect(reporter.total).to.equal(4);
+        expect(reporter.hasPassed()).to.be.false();
+        const finish = sandbox.spy(chromeReporter, 'finish');
+        reporter.finish();
+        reporter.finish();
+
+        return reporter.close().then(() => {
+          sinon.assert.calledOnce(finish);
+          expect(fs.readdirSync(directory).sort()).to.deep.equal(['Chrome.txt', 'Firefox.txt']);
+          const chrome = fs.readFileSync(path.join(directory, 'Chrome.txt'), 'utf8');
+          const firefox = fs.readFileSync(path.join(directory, 'Firefox.txt'), 'utf8');
+          const output = stream.read().toString();
+          if (format === 'tap' || format === 'dot') {
+            expect(chrome).to.contain('# tests 2').and.contain('# pass  1');
+            expect(firefox).to.contain('# tests 1').and.contain('# fail  1');
+            expect(output).to.contain('# tests 4');
+          } else if (format === 'xunit') {
+            expect(chrome).to.contain('tests="2"').and.contain('skipped="1"').and.contain('failures="0"');
+            expect(firefox).to.contain('tests="1"').and.contain('failures="1"');
+            expect((chrome.match(/<testsuite /g) || [])).to.have.lengthOf(1);
+            expect(output).to.contain('tests="4"');
+          } else {
+            expect((chrome.match(/##teamcity\[testFinished /g) || [])).to.have.lengthOf(2);
+            expect((chrome.match(/##teamcity\[testSuiteFinished /g) || [])).to.have.lengthOf(1);
+            expect(firefox).to.contain('##teamcity[testFailed ');
+            expect((output.match(/##teamcity\[testFinished /g) || [])).to.have.lengthOf(4);
+          }
+          expect(chrome).not.to.contain('browser failed');
+          expect(firefox).to.contain('browser failed');
+        });
+      });
+    });
+
+    it('waits for every file to close and reuses the close promise', function() {
+      const reporter = new Reporter(mockApp('tap'), stream, path.join(directory, '<launcher>.txt'));
+      reporter.report('Chrome', { name: 'first', passed: true });
+      reporter.report('Firefox', { name: 'second', passed: true });
+      let resolveChrome, resolveFirefox;
+      const chromeReady = new Bluebird(resolve => { resolveChrome = resolve; });
+      const firefoxReady = new Bluebird(resolve => { resolveFirefox = resolve; });
+      [chromeReady, firefoxReady].forEach((ready, index) => {
+        const file = Array.from(reporter.launcherReports.values())[index].file;
+        const close = file.close.bind(file);
+        sandbox.stub(file, 'close').callsFake(() => close().then(() => ready));
+      });
+      const closing = reporter.close();
+      expect(reporter.close()).to.equal(closing);
+      let closed = false;
+      closing.then(() => { closed = true; });
+      resolveChrome();
+      return Bluebird.delay(10).then(() => {
+        expect(closed).to.be.false();
+        resolveFirefox();
+        return closing;
+      }).then(() => {
+        expect(fs.readFileSync(path.join(directory, 'Chrome.txt'), 'utf8')).to.contain('first');
+        expect(fs.readFileSync(path.join(directory, 'Firefox.txt'), 'utf8')).to.contain('second');
+      });
+    });
+
+    it('keeps internal errors on stdout without creating launcher files', function() {
+      const reporter = new Reporter(mockApp('tap'), stream, path.join(directory, '<launcher>.txt'));
+      reporter.report(null, { name: 'internal failure', passed: false });
+      return reporter.close().then(() => {
+        expect(fs.readdirSync(directory)).to.deep.equal([]);
+        expect(stream.read().toString()).to.contain('internal failure');
+        expect(reporter.hasPassed()).to.be.false();
+      });
+    });
+
+    it('keeps all launchers in one file when the launcher template is absent', function() {
+      const filename = path.join(directory, 'combined.xml');
+      const reporter = new Reporter(mockApp('xunit'), stream, filename);
+      reporter.report('Chrome', { name: 'chrome test', passed: true });
+      reporter.report('Firefox', { name: 'firefox test', passed: false });
+      reporter.report('testem', { launcherId: 0, name: 'hook', passed: true });
+      reporter.finish();
+      reporter.finish();
+      const closing = reporter.close();
+      expect(reporter.close()).to.equal(closing);
+      return closing.then(() => {
+        const output = fs.readFileSync(filename, 'utf8');
+        expect(output).to.contain('chrome test').and.contain('firefox test').and.contain('hook');
+        expect(output).to.contain('tests="3"').and.contain('failures="1"');
+        expect((output.match(/<testsuite /g) || [])).to.have.lengthOf(1);
+        expect(fs.readdirSync(directory)).to.deep.equal(['combined.xml']);
+        expect(reporter.hasPassed()).to.be.false();
+      });
+    });
+
     it('preserves xunit intermediate TAP output with launcher templates', function() {
       const app = mockApp('xunit');
       const get = app.config.get;

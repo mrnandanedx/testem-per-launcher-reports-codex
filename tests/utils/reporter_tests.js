@@ -184,6 +184,10 @@ describe('Reporter', function() {
         reporter.onEnd('testem', { launcherId: 0 });
         const chromeReporter = reporter.launcherReports.get('Chrome').reporter;
         const firefoxReporter = reporter.launcherReports.get('Firefox').reporter;
+        if (format === 'xunit') {
+          expect(chromeReporter.launcher).to.equal('Chrome');
+          expect(firefoxReporter.launcher).to.equal('Firefox');
+        }
         expect(chromeReporter.total).to.equal(2);
         expect(chromeReporter.pass).to.equal(1);
         expect(chromeReporter.skipped).to.equal(1);

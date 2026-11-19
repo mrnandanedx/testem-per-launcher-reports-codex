@@ -109,12 +109,14 @@ Chrome, Chrome Canary, Chromium, Firefox, IE, Opera, PhantomJS, Safari, Safari T
     stdout_stream                [Stream]  the stdout stream to use (defaults to `process.stdout`)
     tap_failed_tests_only        [Boolean] log only failed tests (`not ok`) in TAP reporting
     tap_quiet_logs               [Boolean] whether to suppress non-failing console logs (_not_ pass/fail info) in TAP reporting
+    tap_show_launcher_summary    [Boolean] append one summary line per launcher to TAP output (false; enabled only by true)
     timeout:                     [Number]  timeout for a browser
     unsafe_file_serving:         [Boolean] allow serving directories that are not in your CWD (false)
     url:                         [String]  url server runs at (http://{host}:{port}/)
     user_data_dir:               [String]  directory to initialize the browser user data directories (default a temporary directory)
     watch_files:                 [Array]   string or array list of files or file patterns to watch changes of (defaults to `src_files`)
     xunit_exclude_stack:         [Boolean] whether to exclude stack traces in xunit reporter
+    xunit_exclude_launcher_properties: [Boolean] omit launcher statistics from xunit properties (false)
     xunit_intermediate_output    [Boolean] print tap output for the xunit reporter (false)
 
 ### HTTPS:
@@ -148,6 +150,15 @@ TAP, dot, or TeamCity. Launcher instances with the same name share one file.
 The internal `testem` launcher creates no separate file; stdout continues to
 include all results. `finish()` can be called repeatedly, and `close()` waits
 until every report file has finished writing.
+
+With `tap_show_launcher_summary: true`, TAP output appends lines such as
+`# Chrome: 3 tests, 1 pass, 1 fail, 1 skip`. The overall summary is always retained.
+xUnit reports include a `<properties>` element by default, with `launchers` and
+per-launcher counts such as `Chrome.total`, `Chrome.pass`, and `Chrome.fail`.
+Separate launcher files also include a `launcher` property identifying the file's
+launcher. Set `xunit_exclude_launcher_properties: true` to omit the element.
+The xUnit reporter exposes `getLauncherStats()` returning `{ total, pass, fail }`
+counts by launcher and `setLauncherName(name)` to set its `launcher` property.
 
 Launcher names replace each of `/`, `\`, `:`, `*`, `?`, `"`, `<`, `>`, `|`, `(`,
 and `)` with an underscore. Runs of whitespace become a single underscore; a

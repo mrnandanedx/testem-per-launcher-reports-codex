@@ -36,6 +36,36 @@ describe('test reporters', function() {
     let originalTimeFn;
     let expectedTimeStrings;
 
+    it('adds one summary line per launcher only when explicitly enabled', function() {
+      [undefined, false, 'true', true].forEach(option => {
+        const output = new PassThrough();
+        const reporter = new TapReporter(false, output, new Config('ci', { tap_show_launcher_summary: option }));
+        reporter.report('Chrome', { name: 'pass', passed: true });
+        reporter.report('Firefox', { name: 'other pass', passed: true });
+        reporter.report('Chrome', { name: 'fail', passed: false });
+        reporter.report('Chrome', { name: 'skip', skipped: true });
+        reporter.finish();
+        const text = output.read().toString();
+        if (option === true) {
+          assert.include(text, '# Chrome: 3 tests, 1 pass, 1 fail, 1 skip');
+          assert.include(text, '# Firefox: 1 tests, 1 pass, 0 fail, 0 skip');
+          assert.lengthOf(text.match(/^# Chrome:/gm), 1);
+        } else {
+          assert.notInclude(text, '# Chrome:');
+        }
+        assert.include(text, '# tests 4');
+      });
+    });
+
+    it('does not count expected todos as failures in launcher summaries', function() {
+      const output = new PassThrough();
+      const reporter = new TapReporter(false, output, new Config('ci', { tap_show_launcher_summary: true }));
+      reporter.report('Chrome', { name: 'expected failure', todo: true, passed: false });
+      reporter.report('Chrome', { name: 'unexpected success', todo: true, passed: true });
+      reporter.finish();
+      assert.include(output.read().toString(), '# Chrome: 2 tests, 0 pass, 1 fail, 0 skip');
+    });
+
     beforeEach(function() {
       stream = new PassThrough();
       originalTimeFn = CurrentTime.asLocaleTimeString;
@@ -854,6 +884,54 @@ describe('test reporters', function() {
         xunit_intermediate_output: false
       });
       stream = new PassThrough();
+    });
+
+    it('returns independent total, pass and fail statistics for each launcher', function() {
+      const reporter = new XUnitReporter(false, stream, config);
+      assert.deepEqual(reporter.getLauncherStats(), {});
+      reporter.report('Chrome', { name: 'pass', passed: true });
+      reporter.report('Firefox', { name: 'fail', passed: false });
+      reporter.report('Chrome', { name: 'skip', skipped: true });
+      reporter.report('Chrome', { name: 'todo', todo: true, passed: false });
+      reporter.report('Chrome', { name: 'unexpected pass', todo: true, passed: true });
+      assert.deepEqual(reporter.getLauncherStats(), {
+        Chrome: { total: 4, pass: 1, fail: 1 },
+        Firefox: { total: 1, pass: 0, fail: 1 }
+      });
+    });
+
+    it('includes launcher properties by default and escapes their XML values', function() {
+      const reporter = new XUnitReporter(false, stream, config);
+      reporter.setLauncherName('Chrome & <nightly>');
+      assert.equal(reporter.launcher, 'Chrome & <nightly>');
+      reporter.report('Chrome', { name: 'pass', passed: true });
+      reporter.report('Chrome', { name: 'fail', passed: false });
+      reporter.report('Firefox', { name: 'other', passed: true });
+      reporter.finish();
+      const output = stream.read().toString();
+      assertXmlIsValid(output);
+      const doc = new XmlDom.DOMParser().parseFromString(output, 'text/xml');
+      const properties = {};
+      const nodes = doc.getElementsByTagName('property');
+      for (let i = 0; i < nodes.length; i++) {
+        properties[nodes[i].getAttribute('name')] = nodes[i].getAttribute('value');
+      }
+      assert.deepEqual(properties, {
+        launcher: 'Chrome & <nightly>', launchers: 'Chrome,Firefox',
+        'Chrome.total': '2', 'Chrome.pass': '1', 'Chrome.fail': '1',
+        'Firefox.total': '1', 'Firefox.pass': '1', 'Firefox.fail': '0'
+      });
+    });
+
+    it('omits properties when xunit_exclude_launcher_properties is enabled', function() {
+      const reporter = new XUnitReporter(false, stream, new Config('ci', { xunit_exclude_launcher_properties: true }));
+      reporter.setLauncherName('Chrome');
+      reporter.report('Chrome', { name: 'pass', passed: true });
+      reporter.finish();
+      const output = stream.read().toString();
+      assert.notInclude(output, '<properties');
+      assert.include(output, '<testcase');
+      assertXmlIsValid(output);
     });
 
     it('writes out and XML escapes results', function() {
